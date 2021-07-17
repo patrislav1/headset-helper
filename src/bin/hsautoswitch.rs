@@ -1,5 +1,6 @@
+use std::{fs, io};
+use std::io::Write;
 use clap::{App, SubCommand};
-use std::fs;
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -23,21 +24,31 @@ fn extract_autoswitch_option(input: &str) -> Option<u8> {
     })
 }
 
-fn read_autoswitch_option(fpath: &str) -> Option<u8> {
-    match fs::read_to_string(fpath) {
-        Ok(contents) => {
-            for line in contents.lines() {
-                if let Some(op) = extract_autoswitch_option(line) {
-                    return Some(op);
-                }
-            }
-            None
-        },
-        Err(e) => {
-            println!("File error: {}", e);
-            std::process::exit(1);
+fn read_autoswitch_option(fpath: &str) -> io::Result<u8> {
+    let contents = fs::read_to_string(fpath)?;
+    for line in contents.lines() {
+        if let Some(op) = extract_autoswitch_option(line) {
+            return Ok(op);
         }
     }
+    Err(io::Error::new(io::ErrorKind::InvalidData, "Parse error"))
+}
+
+fn write_autoswitch_option(fpath: &str, op: u8) -> io::Result<()> {
+    let contents = fs::read_to_string(fpath)?;
+    let mut file = fs::File::create(fpath)?;
+    for line in contents.lines() {
+        if let Some(_) = extract_autoswitch_option(line) {
+            file.write_fmt(
+                format_args!("load-module module-bluetooth-policy auto_switch={}\n", op)
+            )?;
+        } else {
+            file.write_fmt(
+                format_args!("{}\n", line)
+            )?;
+        }
+    }
+    Ok(())
 }
 
 fn main() {
@@ -65,23 +76,22 @@ fn main() {
     let cfg_file = args.value_of("config").unwrap_or("/etc/pulse/default.pa");
 
     if let Some(cmd) = args.subcommand_name() {
-        println!("{}", match cmd {
-            "0" => "Disable",
-            "1" => "HFP1",
-            "2" => "HFP2",
-            _ => "Invalid command"
-        });
+        if let Err(why) = write_autoswitch_option(cfg_file, cmd.parse::<u8>().unwrap()) {
+            println!("couldn't write {}: {}", cfg_file, why);
+            std::process::exit(1);
+        }
     } else {
-        if let Some(i) = read_autoswitch_option(cfg_file) {
-            println!("{}: Auto-switch to HFP {}", i, match i {
+        match read_autoswitch_option(cfg_file) {
+            Err(why) => {
+                println!("couldn't read {}: {}", cfg_file, why);
+                std::process::exit(1);
+            },
+            Ok(i) => println!("{}: Auto-switch to HFP {}", i, match i {
                 0 => "disabled",
                 1 => "enabled based on capture stream",
                 2 => "enabled based on heuristics",
                 _ => "N/A"
             })
-        } else {
-            println!("Couldn't parse config file");
-            std::process::exit(1);
         }
     }
 }
