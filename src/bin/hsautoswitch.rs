@@ -1,17 +1,9 @@
 use clap::{App, SubCommand};
-use std::fs::File;
-use std::io::{self, BufRead};
-use std::path::Path;
+use std::fs;
 use lazy_static::lazy_static;
 use regex::Regex;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where P: AsRef<Path>, {
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
-}
 
 fn extract_autoswitch_option(input: &str) -> Option<u8> {
     lazy_static! {
@@ -32,10 +24,10 @@ fn extract_autoswitch_option(input: &str) -> Option<u8> {
 }
 
 fn read_autoswitch_option(fpath: &str) -> Option<u8> {
-    match read_lines(fpath) {
-        Ok(lines) => {
-            for line in lines {
-                if let Some(op) = extract_autoswitch_option(&line.unwrap()) {
+    match fs::read_to_string(fpath) {
+        Ok(contents) => {
+            for line in contents.lines() {
+                if let Some(op) = extract_autoswitch_option(line) {
                     return Some(op);
                 }
             }
