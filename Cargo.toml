@@ -7,3 +7,4 @@ edition = "2018"
 clap = "^2"
 lazy_static = "^1"
 regex = "^1"
+pulse = { package = "libpulse-binding", version = "^2" }
