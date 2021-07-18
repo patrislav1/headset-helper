@@ -5,6 +5,22 @@ use pulse::mainloop::standard::IterateResult;
 use pulse::operation;
 use pulse::callbacks::ListResult;
 
+fn pa_wait_for<F>(mainloop: &mut Mainloop, f: F) -> Result<(), &'static str>
+    where F: Fn() -> Option<Result<(), &'static str>> {
+    loop {
+        match mainloop.iterate(true) {
+            IterateResult::Quit(_) |
+            IterateResult::Err(_) => {
+                return Err("Iterate state was not success, quitting...");
+            },
+            IterateResult::Success(_) => {},
+        }
+        if let Some(result) = f() {
+            return result;
+        }
+    }
+}
+
 fn sink_info_dumper(sil: ListResult<&introspect::SinkInfo>) {
     match sil {
         ListResult::Item(si) => {
@@ -36,46 +52,24 @@ fn main() {
     context.connect(None, ContextFlagSet::NOFLAGS, None)
         .expect("Failed to connect context");
 
-    // Wait for context to be ready
-    loop {
-        match mainloop.iterate(false) {
-            IterateResult::Quit(_) |
-            IterateResult::Err(_) => {
-                eprintln!("Iterate state was not success, quitting...");
-                return;
-            },
-            IterateResult::Success(_) => {},
-        }
+    pa_wait_for(&mut mainloop, || {
         match context.get_state() {
-            pulse::context::State::Ready => { break; },
+            pulse::context::State::Ready => Some(Ok(())),
             pulse::context::State::Failed |
-            pulse::context::State::Terminated => {
-                eprintln!("Context state failed/terminated, quitting...");
-                return;
-            },
-            _ => {},
+            pulse::context::State::Terminated =>
+                Some(Err("Context state failed/terminated")),
+            _ => None
         }
-    }
+    }).unwrap();
 
     let introspect = &context.introspect();
     let result = introspect.get_sink_info_list(sink_info_dumper);
 
-    loop {
-        match mainloop.iterate(false) {
-            IterateResult::Quit(_) |
-            IterateResult::Err(_) => {
-                eprintln!("Iterate state was not success, quitting...");
-                return;
-            },
-            IterateResult::Success(_) => {},
-        }
+    pa_wait_for(&mut mainloop, || {
         match result.get_state() {
-            operation::State::Done => { break; },
-            operation::State::Cancelled => {
-                eprintln!("Operation canceled, quitting...");
-                return;
-            },
-            _ => {},
+            operation::State::Done => Some(Ok(())),
+            operation::State::Cancelled => Some(Err("Operation canceled")),
+            operation::State::Running => None,
         }
-    }
+    }).unwrap();
 }
