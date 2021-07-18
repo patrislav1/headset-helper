@@ -38,6 +38,27 @@ fn sink_info_dumper(sil: ListResult<&introspect::SinkInfo>) {
     }
 }
 
+fn source_info_dumper(sil: ListResult<&introspect::SourceInfo>) {
+    match sil {
+        ListResult::Item(si) => {
+            if let Some(_) = si.monitor_of_sink {
+                // Ignore monitors
+                return;
+            }
+            println!("index: {}", si.index);
+            println!("name: {}", si.name.as_ref().unwrap());
+            println!("desc: {}", si.description.as_ref().unwrap());
+            println!("mute: {}", si.mute);
+        },
+        ListResult::End => {
+            println!("List end.");
+        },
+        ListResult::Error => {
+            eprintln!("Error while receiving list!");
+        },
+    }
+}
+
 fn main() {
     let mut proplist = Proplist::new().unwrap();
     proplist.set_str(pulse::proplist::properties::APPLICATION_NAME, "FooApp")
@@ -63,8 +84,19 @@ fn main() {
     }).unwrap();
 
     let introspect = &context.introspect();
-    let result = introspect.get_sink_info_list(sink_info_dumper);
 
+    println!("sources:");
+    let result = introspect.get_source_info_list(source_info_dumper);
+    pa_wait_for(&mut mainloop, || {
+        match result.get_state() {
+            operation::State::Done => Some(Ok(())),
+            operation::State::Cancelled => Some(Err("Operation canceled")),
+            operation::State::Running => None,
+        }
+    }).unwrap();
+
+    println!("sinks:");
+    let result = introspect.get_sink_info_list(sink_info_dumper);
     pa_wait_for(&mut mainloop, || {
         match result.get_state() {
             operation::State::Done => Some(Ok(())),
