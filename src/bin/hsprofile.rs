@@ -21,6 +21,16 @@ fn pa_wait_for<F>(mainloop: &mut Mainloop, f: F) -> Result<(), &'static str>
     }
 }
 
+fn pa_wait_result<T: ?Sized>(mainloop: &mut Mainloop, result: operation::Operation<T>) -> Result<(), &'static str> {
+    pa_wait_for(mainloop, || {
+        match result.get_state() {
+            operation::State::Done => Some(Ok(())),
+            operation::State::Cancelled => Some(Err("Operation canceled")),
+            operation::State::Running => None,
+        }
+    })
+}
+
 fn sink_info_dumper(sil: ListResult<&introspect::SinkInfo>) {
     match sil {
         ListResult::Item(si) => {
@@ -86,22 +96,12 @@ fn main() {
     let introspect = &context.introspect();
 
     println!("sources:");
-    let result = introspect.get_source_info_list(source_info_dumper);
-    pa_wait_for(&mut mainloop, || {
-        match result.get_state() {
-            operation::State::Done => Some(Ok(())),
-            operation::State::Cancelled => Some(Err("Operation canceled")),
-            operation::State::Running => None,
-        }
-    }).unwrap();
+    pa_wait_result(&mut mainloop,
+        introspect.get_source_info_list(source_info_dumper)
+    ).unwrap();
 
     println!("sinks:");
-    let result = introspect.get_sink_info_list(sink_info_dumper);
-    pa_wait_for(&mut mainloop, || {
-        match result.get_state() {
-            operation::State::Done => Some(Ok(())),
-            operation::State::Cancelled => Some(Err("Operation canceled")),
-            operation::State::Running => None,
-        }
-    }).unwrap();
+    pa_wait_result(&mut mainloop,
+        introspect.get_sink_info_list(sink_info_dumper)
+    ).unwrap();
 }
