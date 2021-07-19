@@ -19,8 +19,28 @@ fn main() {
     context.connect(None, ContextFlagSet::NOFLAGS, None)
         .expect("Failed to connect context");
 
-    let introspect = context.introspect();
+    // Wait for context to be ready
+    loop {
+        match mainloop.iterate(false) {
+            IterateResult::Quit(_) |
+            IterateResult::Err(_) => {
+                eprintln!("Iterate state was not success, quitting...");
+                return;
+            },
+            IterateResult::Success(_) => {},
+        }
+        match context.get_state() {
+            pulse::context::State::Ready => { break; },
+            pulse::context::State::Failed |
+            pulse::context::State::Terminated => {
+                eprintln!("Context state failed/terminated, quitting...");
+                return;
+            },
+            _ => {},
+        }
+    }
 
+    let introspect = context.introspect();
     let result = introspect.get_sink_info_list(|x| println!("cb: {:#?}", x));
 
     loop {
