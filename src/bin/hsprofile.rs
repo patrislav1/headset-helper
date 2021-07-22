@@ -45,13 +45,15 @@ fn main() {
     let mut pa = pa_util::PaApp::new("hsprofile");
 
     println!("sources:");
+    let op1 = pa.introspect.borrow().get_source_info_list(source_info_dumper);
     pa.wait_result(
-        pa.introspect.get_source_info_list(source_info_dumper)
+        op1
     ).unwrap();
 
     println!("sinks:");
+    let op2 = pa.introspect.borrow().get_sink_info_list(sink_info_dumper);
     pa.wait_result(
-        pa.introspect.get_sink_info_list(sink_info_dumper)
+        op2
     ).unwrap();
 
     println!("Done.");

@@ -3,11 +3,28 @@ use pulse::context::{introspect::Introspector, Context, FlagSet as ContextFlagSe
 use pulse::proplist::Proplist;
 use pulse::mainloop::standard::IterateResult;
 use pulse::operation;
+use std::rc::Rc;
+use std::cell::RefCell;
+use std::ops::Deref;
+
+struct IntrospectWrapper {
+    introspect: Rc<RefCell<Introspector>>,
+    ctx_ref: Rc<RefCell<Context>>
+}
+
+impl IntrospectWrapper {
+    pub fn new(ctx: Rc<RefCell<Context>>) -> IntrospectWrapper {
+        IntrospectWrapper {
+            introspect: Rc::new(RefCell::new(ctx.borrow().introspect()))
+            ctx_ref = ctx.take()
+        }
+    }
+}
 
 pub struct PaApp {
-    mainloop: Mainloop,
-    context: Context,
-    pub introspect: Introspector
+    mainloop: Rc<RefCell<Mainloop>>,
+    context: Rc<RefCell<Context>>,
+    pub introspect: 
 }
 
 fn pa_wait_for<F>(mainloop: &mut Mainloop, f: F) -> Result<(), &'static str>
@@ -43,18 +60,21 @@ impl PaApp {
             pulse::proplist::properties::APPLICATION_NAME, name
         ).unwrap();
 
-        let mut mainloop = Mainloop::new()
-            .expect("Failed to create mainloop");
+        let mut mainloop = Rc::new(RefCell::new(Mainloop::new().expect("Failed to create mainloop")));
     
-        let mut context =
-            Context::new_with_proplist(&mainloop, name /*+ "Context"*/, &proplist)
-            .expect("Failed to create new context");
+        println!("refcount1: {}", Rc::strong_count(&mainloop));
+        let mut context = Rc::new(RefCell::new(
+            Context::new_with_proplist(mainloop.borrow().deref(), name /*+ "Context"*/, &proplist)
+            .expect("Failed to create new context")
+        ));
+        println!("refcount3: {}", Rc::strong_count(&mainloop));
     
-        context.connect(None, ContextFlagSet::NOFLAGS, None)
+        println!("crefcount1: {}", Rc::strong_count(&context));
+        context.borrow_mut().connect(None, ContextFlagSet::NOFLAGS, None)
             .expect("Failed to connect context");
     
-        pa_wait_for(&mut mainloop, || {
-            match context.get_state() {
+        pa_wait_for(&mut mainloop.borrow_mut(), || {
+            match context.borrow().get_state() {
                 pulse::context::State::Ready => Some(Ok(())),
                 pulse::context::State::Failed |
                 pulse::context::State::Terminated =>
@@ -63,7 +83,7 @@ impl PaApp {
             }
         }).unwrap();
 
-        let introspect = context.introspect();
+        let introspect = Rc::new(RefCell::new(context.borrow().introspect()));
 
         PaApp {
             mainloop: mainloop,
@@ -74,10 +94,10 @@ impl PaApp {
 
     pub fn wait_for<F>(&mut self, f: F) -> Result<(), &'static str>
     where F: Fn() -> Option<Result<(), &'static str>> {
-        pa_wait_for(&mut self.mainloop, f)
+        pa_wait_for(&mut self.mainloop.borrow_mut(), f)
     }
 
     pub fn wait_result<T: ?Sized>(&mut self, op: operation::Operation<T>) -> Result<(), &'static str> {
-        pa_wait_result(&mut self.mainloop, op)
+        pa_wait_result(&mut self.mainloop.borrow_mut(), op)
     }
 }
